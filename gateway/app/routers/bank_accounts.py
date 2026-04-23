@@ -1,13 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-import httpx
 import os
-from typing import List
-from app.dependencies import get_current_user
 
-router = APIRouter(
-    prefix="/users/me",
-    tags=["bank_accounts"]
-)
+import httpx
+from app.dependencies import get_current_user, get_http_client
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+router = APIRouter(prefix="/users/me", tags=["bank_accounts"])
 
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL")
 
@@ -103,10 +100,10 @@ USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL")
                         "bank_account_name": "Основная карта",
                         "currency": "RUB",
                         "bank": "Сбербанк",
-                        "balance": "125450.75"
+                        "balance": "125450.75",
                     }
                 }
-            }
+            },
         },
         400: {
             "description": "Некорректные данные",
@@ -115,65 +112,52 @@ USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL")
                     "examples": {
                         "duplicate": {
                             "summary": "Счет уже добавлен",
-                            "value": {"detail": "Bank account with this number already exists"}
+                            "value": {"detail": "Bank account with this number already exists"},
                         },
                         "not_found_in_bank": {
                             "summary": "Счет не найден в банке",
-                            "value": {"detail": "Bank account does not exist in the bank system"}
+                            "value": {"detail": "Bank account does not exist in the bank system"},
                         },
                         "short_number": {
                             "summary": "Слишком короткий номер",
-                            "value": {"detail": "Bank account number must be at least 16 digits"}
-                        }
+                            "value": {"detail": "Bank account number must be at least 16 digits"},
+                        },
                     }
                 }
-            }
+            },
         },
         401: {"description": "Не авторизован"},
         404: {"description": "Пользователь не найден"},
-        504: {"description": "Таймаут при добавлении счета"}
-    }
+        504: {"description": "Таймаут при добавлении счета"},
+    },
 )
-async def add_bank_account(
-    request: Request,
-    bank_account: dict,
-    current_user: dict = Depends(get_current_user)
-):
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            # Передаем cookies из оригинального запроса (refresh_token)
-            cookies = dict(request.cookies)
+async def add_bank_account(request: Request, bank_account: dict, current_user: dict = Depends(get_current_user)):
 
-            response = await client.post(
-                f"{USERS_SERVICE_URL}/users/me/bank_account",
-                json=bank_account,
-                headers={"Authorization": f"Bearer {current_user.get('token')}"},
-                cookies=cookies
-            )
+    client = get_http_client()
+    try:
+        # Передаем cookies из оригинального запроса (refresh_token)
+        cookies = dict(request.cookies)
 
-            if response.status_code == 400:
-                error_detail = response.json().get("detail", "Bad request")
-                raise HTTPException(status_code=400, detail=error_detail)
-            elif response.status_code == 404:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Счет не найден в банковской системе"
-                )
+        response = await client.post(
+            f"{USERS_SERVICE_URL}/users/me/bank_account",
+            json=bank_account,
+            headers={"Authorization": f"Bearer {current_user.get('token')}"},
+            cookies=cookies,
+        )
 
-            response.raise_for_status()
-            return response.json()
+        if response.status_code == 400:
+            error_detail = response.json().get("detail", "Bad request")
+            raise HTTPException(status_code=400, detail=error_detail)
+        elif response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Счет не найден в банковской системе")
 
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="Таймаут при добавлении счета"
-            )
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Ошибка: {e.response.text}"
-            )
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Таймаут при добавлении счета")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ошибка: {e.response.text}")
 
 
 @router.get(
@@ -191,27 +175,24 @@ async def add_bank_account(
                             "bank_account_name": "Основная карта",
                             "currency": "RUB",
                             "bank": "Сбербанк",
-                            "balance": "125450.75"
+                            "balance": "125450.75",
                         },
                         {
                             "bank_account_id": 2,
                             "bank_account_name": "Накопительный счет",
                             "currency": "RUB",
                             "bank": "Тинькофф",
-                            "balance": "50000.00"
-                        }
+                            "balance": "50000.00",
+                        },
                     ]
                 }
-            }
+            },
         },
         401: {"description": "Не авторизован"},
-        504: {"description": "Таймаут при получении счетов"}
-    }
+        504: {"description": "Таймаут при получении счетов"},
+    },
 )
-async def get_bank_accounts(
-    request: Request,
-    current_user: dict = Depends(get_current_user)
-):
+async def get_bank_accounts(request: Request, current_user: dict = Depends(get_current_user)):
     """
     Получить все банковские счета текущего пользователя.
 
@@ -265,29 +246,23 @@ async def get_bank_accounts(
     - **401 Unauthorized:** Невалидный или отсутствующий токен
     - **504 Gateway Timeout:** Сервис пользователей не отвечает
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            cookies = dict(request.cookies)
+    client = get_http_client()
+    try:
+        cookies = dict(request.cookies)
 
-            response = await client.get(
-                f"{USERS_SERVICE_URL}/users/me/bank_accounts",
-                headers={"Authorization": f"Bearer {current_user.get('token')}"},
-                cookies=cookies
-            )
+        response = await client.get(
+            f"{USERS_SERVICE_URL}/users/me/bank_accounts",
+            headers={"Authorization": f"Bearer {current_user.get('token')}"},
+            cookies=cookies,
+        )
 
-            response.raise_for_status()
-            return response.json()
+        response.raise_for_status()
+        return response.json()
 
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="Таймаут при получении счетов"
-            )
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Ошибка: {e.response.text}"
-            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Таймаут при получении счетов")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ошибка: {e.response.text}")
 
 
 @router.delete(
@@ -296,26 +271,16 @@ async def get_bank_accounts(
     summary="Удалить банковский счет",
     description="Удаляет банковский счет из профиля пользователя",
     responses={
-        204: {
-            "description": "Счет успешно удален (без тела ответа)"
-        },
+        204: {"description": "Счет успешно удален (без тела ответа)"},
         401: {"description": "Не авторизован"},
         404: {
             "description": "Счет не найден",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "Банковский счет не найден"}
-                }
-            }
+            "content": {"application/json": {"example": {"detail": "Банковский счет не найден"}}},
         },
-        504: {"description": "Таймаут при удалении счета"}
-    }
+        504: {"description": "Таймаут при удалении счета"},
+    },
 )
-async def delete_bank_account(
-    bank_account_id: int,
-    request: Request,
-    current_user: dict = Depends(get_current_user)
-):
+async def delete_bank_account(bank_account_id: int, request: Request, current_user: dict = Depends(get_current_user)):
     """
     Удалить банковский счет из профиля пользователя.
 
@@ -361,32 +326,23 @@ async def delete_bank_account(
     2. Выберите `bank_account_id` счета для удаления
     3. Вызовите `DELETE /users/me/bank_account/{bank_account_id}`
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            cookies = dict(request.cookies)
+    client = get_http_client()
+    try:
+        cookies = dict(request.cookies)
 
-            response = await client.delete(
-                f"{USERS_SERVICE_URL}/users/me/bank_account/{bank_account_id}",
-                headers={"Authorization": f"Bearer {current_user.get('token')}"},
-                cookies=cookies
-            )
+        response = await client.delete(
+            f"{USERS_SERVICE_URL}/users/me/bank_account/{bank_account_id}",
+            headers={"Authorization": f"Bearer {current_user.get('token')}"},
+            cookies=cookies,
+        )
 
-            if response.status_code == 404:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Банковский счет не найден"
-                )
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Банковский счет не найден")
 
-            response.raise_for_status()
-            return None
+        response.raise_for_status()
+        return None
 
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="Таймаут при удалении счета"
-            )
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Ошибка: {e.response.text}"
-            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Таймаут при удалении счета")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ошибка: {e.response.text}")

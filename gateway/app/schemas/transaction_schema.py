@@ -1,57 +1,31 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class TransactionFilterRequest(BaseModel):
     """Схема фильтрации транзакций"""
+
     transaction_type: Optional[str] = Field(
-        None,
-        description="Тип транзакции: 'income' или 'expense'",
-        pattern="^(income|expense)$"
+        None, description="Тип транзакции: 'income' или 'expense'", pattern="^(income|expense)$"
     )
-    category_ids: Optional[List[int]] = Field(
-        None,
-        description="Список ID категорий для фильтрации"
-    )
-    start_date: Optional[datetime] = Field(
-        None,
-        description="Начальная дата периода (ISO 8601)"
-    )
-    end_date: Optional[datetime] = Field(
-        None,
-        description="Конечная дата периода (ISO 8601)"
-    )
-    min_amount: Optional[float] = Field(
-        None,
-        ge=0,
-        description="Минимальная сумма транзакции"
-    )
-    max_amount: Optional[float] = Field(
-        None,
-        ge=0,
-        description="Максимальная сумма транзакции"
-    )
-    merchant_ids: Optional[List[int]] = Field(
-        None,
-        description="Список ID мерчантов для фильтрации"
-    )
-    limit: int = Field(
-        ...,
-        ge=1,
-        le=100,
-        description="Количество записей на странице"
-    )
-    offset: int = Field(
-        0,
-        ge=0,
-        description="Смещение для пагинации"
-    )
+    category_ids: Optional[List[int]] = Field(None, description="Список ID категорий для фильтрации")
+    start_date: Optional[datetime] = Field(None, description="Начальная дата периода (ISO 8601)")
+    end_date: Optional[datetime] = Field(None, description="Конечная дата периода (ISO 8601)")
+    min_amount: Optional[float] = Field(None, ge=0, description="Минимальная сумма транзакции")
+    max_amount: Optional[float] = Field(None, ge=0, description="Максимальная сумма транзакции")
+    merchant_ids: Optional[List[int]] = Field(None, description="Список ID мерчантов для фильтрации")
+    limit: int = Field(..., ge=1, le=100, description="Количество записей на странице")
+    offset: int = Field(0, ge=0, description="Смещение для пагинации")
 
 
 class TransactionResponse(BaseModel):
     """Схема ответа транзакции"""
+
     id: str
     user_id: int
+    bank_account_id: int
     category_id: int
     category_name: Optional[str] = None
     amount: float
@@ -64,5 +38,34 @@ class TransactionResponse(BaseModel):
 
 class CategoryResponse(BaseModel):
     """Схема ответа категории"""
+
     id: int
     name: str
+    type: Optional[str] = None
+
+
+class UpdateTransactionCategoryRequest(BaseModel):
+    """Схема запроса изменения категории транзакции"""
+
+    category_id: int = Field(..., gt=0, description="ID новой категории")
+
+
+class CategorySummaryRequest(BaseModel):
+    """Схема запроса сумм по категориям"""
+
+    transaction_type: Optional[str] = Field(
+        None,
+        description="Тип: 'income' или 'expense'. Без параметра — все типы",
+        pattern="^(income|expense)$",
+    )
+    start_date: Optional[datetime] = Field(None, description="Начало периода (ISO 8601)")
+    end_date: Optional[datetime] = Field(None, description="Конец периода (ISO 8601)")
+
+
+class CategorySummaryResponse(BaseModel):
+    """Сумма транзакций по одной категории"""
+
+    category_id: int
+    category_name: str
+    total_amount: float
+    transaction_count: int

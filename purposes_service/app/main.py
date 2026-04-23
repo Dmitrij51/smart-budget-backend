@@ -1,20 +1,33 @@
+from contextlib import asynccontextmanager
+
+import uvicorn
+from app.database import create_tables, shutdown
+from app.routers import purpose
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import create_tables, shutdown
-from app.models import *
-from contextlib import asynccontextmanager
-from app.routers import purpose
-import uvicorn
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from shared.cache import cache_client
+from shared.event_publisher import EventPublisher
+from shared.logging import LoggingMiddleware, setup_logging
+
+setup_logging(service_name="purposes-service")
 
 
 @asynccontextmanager
 async def life_span(app: FastAPI):
+    await cache_client.connect()
+    await EventPublisher.connect()
     await create_tables()
     yield
+    await EventPublisher.close()
+    await cache_client.close()
     await shutdown()
 
 
 app = FastAPI(title="Purposes-service", lifespan=life_span)
+
+app.add_middleware(LoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,10 +39,13 @@ app.add_middleware(
 
 app.include_router(purpose.router)
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "purposes-service"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8005)

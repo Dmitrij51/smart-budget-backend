@@ -1,20 +1,28 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+from contextlib import asynccontextmanager
+
+import uvicorn
+from app.cache import cache_client
+from app.database import AsyncSessionLocal, create_tables
+from app.event_listener import EventListener
+from app.models import *  # noqa: F403
+from app.repository.sync_repository import SyncRepository
+from app.routers import sync, transactions
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from app.database import AsyncSessionLocal, create_tables, shutdown
-from app.models import *
-from contextlib import asynccontextmanager
-from app.routers import transactions, sync
-import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.repository.sync_repository import SyncRepository
+from shared.event_publisher import EventPublisher
+from shared.logging import LoggingMiddleware, setup_logging
 
+setup_logging(service_name="transactions-service")
 
 scheduler = AsyncIOScheduler()
 
 
-# 2. Периодическая задача
+#  Периодическая задача
 async def periodic_sync():
     async with AsyncSessionLocal() as db:
         repo = SyncRepository(db)
@@ -29,6 +37,8 @@ async def periodic_sync():
 async def life_span(app: FastAPI):
     print("[LIFESPAN] Starting up...")
 
+    await cache_client.connect()
+    await EventPublisher.connect()
     await create_tables()
 
     try:
@@ -43,15 +53,28 @@ async def life_span(app: FastAPI):
     scheduler.start()
     print("[LIFESPAN] Scheduler started (sync every 10 minutes)")
 
+    event_listener = EventListener()
+    listener_task = asyncio.create_task(event_listener.listen())
+    app.state.listener_task = listener_task
+
     yield
 
     print("[LIFESPAN] Shutting down...")
+    if not listener_task.done():
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
+    await cache_client.close()
+    await EventPublisher.close()
     scheduler.shutdown(wait=False)
     print("[LIFESPAN] Scheduler stopped")
 
 
-
 app = FastAPI(title="Transactions", lifespan=life_span)
+
+app.add_middleware(LoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,9 +87,13 @@ app.add_middleware(
 app.include_router(transactions.router)
 app.include_router(sync.router)
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "transactions"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

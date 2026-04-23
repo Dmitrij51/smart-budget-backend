@@ -1,6 +1,8 @@
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY transactions_service/requirements.txt  ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-COPY ./app ./app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+COPY .env .env
+COPY ./shared ./shared
+COPY transactions_service/app ./app
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "2", "--backlog", "4096"]

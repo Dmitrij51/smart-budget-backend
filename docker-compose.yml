@@ -9,23 +9,42 @@ services:
       POSTGRES_PASSWORD: ${USERS_DB_PASSWORD}
       POSTGRES_DB: ${USERS_DB_NAME}
     ports:
-      - "5433:5432"
+      - "${USERS_DB_HOST_PORT:-5433}:5432"
     volumes:
       - users-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${USERS_DB_USER} -d $${USERS_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
 
   users-service:
-    build: ./users_service
+    build:
+      context: .
+      dockerfile: users_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${USERS_SERVICE_PORT}:${USERS_SERVICE_PORT}"
+      - "${USERS_SERVICE_HOST_PORT:-8001}:${USERS_SERVICE_PORT}"
     depends_on:
-      - users-db
+      users-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
     environment:
       DATABASE_URL: ${USERS_DATABASE_URL}
       SERVICE_PORT: ${USERS_SERVICE_PORT}
       ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
       REFRESH_SECRET_KEY: ${REFRESH_SECRET_KEY}
+      REDIS_URL: ${REDIS_URL}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=users-service"
+    networks:
+      - monitoring-net
 
   # --- Transactions Microservice ---
   transactions-db:
@@ -37,21 +56,37 @@ services:
       POSTGRES_PASSWORD: ${TRANSACTIONS_DB_PASSWORD}
       POSTGRES_DB: ${TRANSACTIONS_DB_NAME}
     ports:
-      - "5434:5432"
+      - "${TRANSACTIONS_DB_HOST_PORT:-5434}:5432"
     volumes:
       - transactions-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${TRANSACTIONS_DB_USER} -d $${TRANSACTIONS_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
 
   transactions-service:
-    build: ./transactions_service
+    build:
+      context: .
+      dockerfile: transactions_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${TRANSACTIONS_SERVICE_PORT}:${TRANSACTIONS_SERVICE_PORT}"
+      - "${TRANSACTIONS_SERVICE_HOST_PORT:-8002}:${TRANSACTIONS_SERVICE_PORT}"
     depends_on:
-      - transactions-db
+      transactions-db:
+        condition: service_healthy
     environment:
       DATABASE_URL: ${TRANSACTIONS_DATABASE_URL}
       SERVICE_PORT: ${TRANSACTIONS_SERVICE_PORT}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=transactions-service"
+    networks:
+      - monitoring-net
 
   # --- Images Microservice ---
   images-db:
@@ -63,23 +98,41 @@ services:
       POSTGRES_PASSWORD: ${IMAGES_DB_PASSWORD}
       POSTGRES_DB: ${IMAGES_DB_NAME}
     ports:
-      - "5435:5432"
+      - "${IMAGES_DB_HOST_PORT:-5435}:5432"
     volumes:
       - images-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${IMAGES_DB_USER} -d $${IMAGES_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
 
   images-service:
-    build: ./images_service
+    build:
+      context: .
+      dockerfile: images_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${IMAGES_SERVICE_PORT}:${IMAGES_SERVICE_PORT}"
+      - "${IMAGES_SERVICE_HOST_PORT:-8003}:${IMAGES_SERVICE_PORT}"
     depends_on:
-      - images-db
+      images-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
     environment:
       DATABASE_URL: ${IMAGES_DATABASE_URL}
       SERVICE_PORT: ${IMAGES_SERVICE_PORT}
     volumes:
       - ./testData:/testData
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=images-service"
+    networks:
+      - monitoring-net
 
   # --- Pseudo Bank Microservice ---
   pseudo-bank-db:
@@ -91,21 +144,40 @@ services:
       POSTGRES_PASSWORD: ${PSEUDO_BANK_DB_PASSWORD}
       POSTGRES_DB: ${PSEUDO_BANK_DB_NAME}
     ports:
-      - "5436:5432"
+      - "${PSEUDO_BANK_DB_HOST_PORT:-5436}:5432"
     volumes:
       - pseudo-bank-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${PSEUDO_BANK_DB_USER} -d $${PSEUDO_BANK_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
 
   pseudo-bank-service:
-    build: ./pseudo_bank_service
+    build:
+      context: .
+      dockerfile: pseudo_bank_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${PSEUDO_BANK_SERVICE_PORT}:${PSEUDO_BANK_SERVICE_PORT}"
+      - "${PSEUDO_BANK_SERVICE_HOST_PORT:-8004}:${PSEUDO_BANK_SERVICE_PORT}"
     depends_on:
-      - pseudo-bank-db
+      pseudo-bank-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
     environment:
       DATABASE_URL: ${PSEUDO_BANK_DATABASE_URL}
       SERVICE_PORT: ${PSEUDO_BANK_SERVICE_PORT}
+      REDIS_URL: ${REDIS_URL}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=pseudo-bank-service"
+    networks:
+      - monitoring-net
 
   # --- Purposes Microservice ---
   purposes-db:
@@ -117,34 +189,149 @@ services:
       POSTGRES_PASSWORD: ${PURPOSES_DB_PASSWORD}
       POSTGRES_DB: ${PURPOSES_DB_NAME}
     ports:
-      - "5437:5432"
+      - "${PURPOSES_DB_HOST_PORT:-5437}:5432"
     volumes:
       - purposes-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${PURPOSES_DB_USER} -d $${PURPOSES_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
 
   purposes-service:
-    build: ./purposes_service
+    build:
+      context: .
+      dockerfile: purposes_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${PURPOSES_SERVICE_PORT}:${PURPOSES_SERVICE_PORT}"
+      - "${PURPOSES_SERVICE_HOST_PORT:-8005}:${PURPOSES_SERVICE_PORT}"
     depends_on:
-      - purposes-db
+      purposes-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
     environment:
       DATABASE_URL: ${PURPOSES_DATABASE_URL}
       SERVICE_PORT: ${PURPOSES_SERVICE_PORT}
+      REDIS_URL: ${REDIS_URL}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=purposes-service"
+    networks:
+      - monitoring-net
 
-  # --- API Gateway ---
-  gateway:
-    build: ./gateway
+  # --- Notification Microservice ---
+  notification-db:
+    image: postgres:13
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${NOTIFICATION_DB_USER}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+    ports:
+      - "${NOTIFICATION_DB_HOST_PORT:-5438}:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${NOTIFICATION_DB_USER} -d $${NOTIFICATION_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification_service/Dockerfile
     env_file:
       - .env
     ports:
-      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+      - "${NOTIFICATION_SERVICE_HOST_PORT:-8006}:${NOTIFICATION_SERVICE_PORT}"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${NOTIFICATION_DATABASE_URL}
+      SERVICE_PORT: ${NOTIFICATION_SERVICE_PORT}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      REDIS_URL: ${REDIS_URL}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=notification-service"
+    networks:
+      - monitoring-net
+
+  # --- History Microservice ---
+  history-db:
+    image: postgres:13
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${HISTORY_DB_USER}
+      POSTGRES_PASSWORD: ${HISTORY_DB_PASSWORD}
+      POSTGRES_DB: ${HISTORY_DB_NAME}
+    ports:
+      - "${HISTORY_DB_HOST_PORT:-5439}:5432"
+    volumes:
+      - history-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${HISTORY_DB_USER} -d $${HISTORY_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - monitoring-net
+
+  history-service:
+    build:
+      context: .
+      dockerfile: history_service/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${HISTORY_SERVICE_HOST_PORT:-8007}:${HISTORY_SERVICE_PORT}"
+    depends_on:
+      history-db:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${HISTORY_DATABASE_URL}
+      SERVICE_PORT: ${HISTORY_SERVICE_PORT}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      REDIS_URL: ${REDIS_URL}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=history-service"
+    networks:
+      - monitoring-net
+
+  # --- API Gateway ---
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${GATEWAY_HOST_PORT:-8000}:${GATEWAY_PORT}"
     depends_on:
       - users-service
       - transactions-service
       - images-service
       - purposes-service
+      - notification-service
+      - history-service
     environment:
       GATEWAY_PORT: ${GATEWAY_PORT}
       USERS_SERVICE_URL: ${USERS_SERVICE_URL}
@@ -152,8 +339,110 @@ services:
       IMAGES_SERVICE_URL: ${IMAGES_SERVICE_URL}
       PSEUDO_BANK_SERVICE_URL: ${PSEUDO_BANK_SERVICE_URL}
       PURPOSES_SERVICE_URL: ${PURPOSES_SERVICE_URL}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL}
+      HISTORY_SERVICE_URL: ${HISTORY_SERVICE_URL}
       ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
       REFRESH_SECRET_KEY: ${REFRESH_SECRET_KEY}
+    restart: on-failure
+    labels:
+      - "logging=promtail"
+      - "compose_service=gateway"
+    networks:
+      - monitoring-net
+
+  # --- Redis ---
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - redis_data:/data
+    networks:
+      - monitoring-net
+
+  # --- Redis Commander (веб-интерфейс для Redis) ---
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    container_name: smartbudget-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - monitoring-net
+
+  # --- Prometheus ---
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    depends_on:
+      - users-service
+      - transactions-service
+      - images-service
+      - pseudo-bank-service
+      - purposes-service
+      - notification-service
+      - history-service
+    networks:
+      - monitoring-net
+
+  # --- Loki (для сбора и хранения логов) ---
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring-net
+
+  # --- Promtail (для сбора логов с контейнеров и отправки в Loki) ---
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - monitoring-net
+
+  # --- Grafana ---
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./monitoring/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - monitoring-net
 
 volumes:
   users-db-data:
@@ -161,3 +450,10 @@ volumes:
   images-db-data:
   pseudo-bank-db-data:
   purposes-db-data:
+  notification-db-data:
+  history-db-data:
+  redis_data:
+
+networks:
+  monitoring-net:
+    driver: bridge

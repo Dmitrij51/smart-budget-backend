@@ -1,29 +1,31 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+
 from app.models import User
 from app.schemas import UserCreate, UserUpdate
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.event_publisher import EventPublisher
+from shared.event_schema import DomainEvent
+
 
 class UserRepository:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, event_publisher: Optional[EventPublisher] = None):
         self.db = db
+        self.event_publisher = event_publisher or EventPublisher()
 
-    
     async def get_by_id(self, user_id: int):
         """Получить пользователя по ID"""
-        result = await self.db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
-    
     async def get_by_email(self, email: str):
         """Получить пользователя по email"""
-        result = await self.db.execute(
-            select(User).where(User.email == email)
-        )
+        result = await self.db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
-    
     async def create(self, user_data: UserCreate, hashed_password: str):
         """Создать нового пользователя"""
         db_user = User(
@@ -36,9 +38,26 @@ class UserRepository:
         self.db.add(db_user)
         await self.db.commit()
         await self.db.refresh(db_user)
+
+        event_data = {
+            "user_id": db_user.id,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "middle_name": db_user.middle_name,
+        }
+
+        event = DomainEvent(
+            event_id=str(uuid4()),
+            event_type="user.registered",
+            source="users-service",
+            timestamp=datetime.now(),
+            payload=event_data,
+        )
+
+        await self.event_publisher.publish(event)
+
         return db_user
-    
-    
+
     async def update(self, user_id: int, user_update: UserUpdate):
         """Обновить данные пользователя"""
         db_user = await self.get_by_id(user_id)
@@ -52,12 +71,27 @@ class UserRepository:
                 setattr(db_user, field, value)
             await self.db.commit()
             await self.db.refresh(db_user)
+
+            # Публикуем событие об обновлении данных пользователя
+            event_data = {
+                "user_id": db_user.id,
+                "first_name": db_user.first_name,
+                "last_name": db_user.last_name,
+                "middle_name": db_user.middle_name,
+            }
+
+            event = DomainEvent(
+                event_id=str(uuid4()),
+                event_type="user.updated",
+                source="users-service",
+                timestamp=datetime.now(),
+                payload=event_data,
+            )
+            await self.event_publisher.publish(event)
+
         return db_user
-    
-    
+
     async def exists_with_email(self, email: str):
         """Проверить существование пользователя с email"""
         user = await self.get_by_email(email)
         return user is not None
-    
-    

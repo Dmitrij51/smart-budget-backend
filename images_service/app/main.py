@@ -1,10 +1,18 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+# Настройка логирования должна быть ПЕРЕД всеми остальными импортами
 from contextlib import asynccontextmanager
 
-from app.routers import images
+from app.cache import cache_client
 from app.database import engine
 from app.models import Base
+from app.routers import images
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from shared.event_publisher import EventPublisher
+from shared.logging import LoggingMiddleware, setup_logging
+
+setup_logging(service_name="images-service")
 
 
 @asynccontextmanager
@@ -15,10 +23,13 @@ async def lifespan(_app: FastAPI):
     Создает таблицы при старте и закрывает соединения при остановке.
     """
     # Startup: Создание таблиц
+    await cache_client.connect()
+    await EventPublisher.connect()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
     yield
+    await cache_client.close()
+    await EventPublisher.close()
 
     # Shutdown: Закрытие соединений
     await engine.dispose()
@@ -59,8 +70,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
+
+app.add_middleware(LoggingMiddleware)
 
 # CORS middleware
 app.add_middleware(
@@ -74,15 +87,13 @@ app.add_middleware(
 # Подключение роутеров
 app.include_router(images.router)
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 
 @app.get("/", tags=["health"])
 async def root():
     """Health check эндпоинт"""
-    return {
-        "service": "images-service",
-        "status": "running",
-        "version": "1.0.0"
-    }
+    return {"service": "images-service", "status": "running", "version": "1.0.0"}
 
 
 @app.get("/health", tags=["health"])
