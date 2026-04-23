@@ -13,7 +13,6 @@ Backend for personal finance management application.
 
 ## 🛠️ Tech Stack
 - FastAPI (Python) - Main services
-- Go - Transaction processing  
 - PostgreSQL - Database
 
 ## 💻 Development Environment
